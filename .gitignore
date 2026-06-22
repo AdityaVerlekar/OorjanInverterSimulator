@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.idea/
+
+data/sample_day_live.csv
