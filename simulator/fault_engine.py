@@ -2,15 +2,12 @@ class fault_engine:
     def __init__(self):
 
         #Environmental Inputs
-        self.irradiance = 0 #TODO: is this necessary
-        self.temperature = 0 #TODO: how do I get this
-        self.plant_capacity = 0 #TODO: what does this mean?
+        self.irradiance = 0 #TODO
+        #Fixme: do we need this? self.plant_capacity = 0
 
         self.NO_FAULT = "NO FAULT"
         self.GRID_FAILURE = "GRID FAILURE"
-        self.OVER_TEMPERATURE = "OVER TEMPERATURE"
         self.UNDER_VOLTAGE = "UNDER VOLTAGE"
-        self.COMMUNICATION_LOSS = "COMMUNICATION LOSS"
         self.fault_status = "NO FAULT"
 
         self.LOW_IRRADIANCE = "LOW IRRADIANCE"
@@ -25,24 +22,34 @@ class fault_engine:
         return self.condition_status
 
     def set_fault(self, fault):
-        if fault.strip() not in ["NO FAULT", "GRID FAILURE", "OVER TEMPERATURE", "UNDER VOLTAGE", "COMMUNICATION LOSS"]:
-            return "INVALID FAULT, current status: "+self.fault_status
-        self.fault_status = fault.strip()
-        return "SUCCESS, current fault status: "+self.fault_status
+        if fault.strip() not in ["GRID FAILURE", "UNDER VOLTAGE"]:
+            return "INVALID FAULT, current status: "+self.fault_status+"\n"
+        fault = fault.strip()
+
+        if(fault == "UNDER VOLTAGE" and self.fault_status=="GRID FAILURE"):
+            return "UNSUCESSFUL, current fault status: "+self.fault_status+"; clear GRID FAILURE first"
+        elif(fault == "UNDER VOLTAGE"):
+            self.fault_status = fault
+            return "SUCCESS, current fault status: " + self.fault_status
+        #else:
+        self.fault_status = "GRID FAILURE"
+        return f"SUCCESS, current fault status: UNDER VOLTAGE; {self.fault_status} imminent\n"
+
 
     def set_condition(self, condition):
-        if condition.strip() not in ["NO CONDITION", "LOW IRRADIANCE"]:
-            return "INVALID CONDITION, current status: " + self.condition_status
+        if(condition.strip() != "LOW IRRADIANCE"):
+            return "INVALID CONDITION, current status: " + self.condition_status+"\n"
         self.condition_status = condition.strip()
-        return "SUCCESS, current condition status: " + self.condition_status
+        return "SUCCESS, current condition status: " + self.condition_status+"\n"
+
 
     def clear_fault(self):
         self.fault_status = self.NO_FAULT
-        return "SUCCESS, current fault status: " + self.fault_status
+        return "SUCCESS, current fault status: " + self.fault_status+"\n"
 
     def clear_condition(self):
         self.condition_status = self.NO_CONDITION
-        return "SUCCESS, current condition status: " + self.condition_status
+        return "SUCCESS, current condition status: " + self.condition_status+"\n"
 
 
 

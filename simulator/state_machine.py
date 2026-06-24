@@ -6,27 +6,23 @@ class state_machine:
         self.RUNNING = "RUNNING"
         self.current_state = self.OFF
 
-        self.start_threshold = 100
+        self.start_threshold = 20
         self.start_init_time = -1
+        self.fault_status = "NO FAULT"
 
-        self.start_duration = 5 #TODO: find out what the time formatting will look like
 
-    def change_state(self, panel_power, time):
+    def change_state(self, panel_power, time, fault_status="NO FAULT"):
+        self.fault_status = fault_status
 
         if(panel_power < self.start_threshold ):
             self.current_state = self.OFF
-            self.start_init_time = -1
 
-        elif(self.current_state == self.OFF):
-            self.current_state = self.STARTING
-            self.start_init_time = time
-
-        elif(self.current_state == self.STARTING and time -self.start_init_time <self.start_duration):
+        elif(self.current_state == self.OFF and fault_status=="NO FAULT"):
             self.current_state = self.STARTING
 
-        elif(self.current_state == self.STARTING or self.current_state == self.RUNNING):
+
+        elif((self.current_state == self.STARTING and fault_status== "NO FAULT") or self.current_state == self.RUNNING):
             self.current_state = self.RUNNING
-
 
         return self.current_state
 

@@ -1,7 +1,7 @@
 class inverter_model:
     def __init__(self):
         self.efficiency = 0.96
-        self.AC_voltage = 230 #India electricty main voltage
+        self.AC_voltage = 232 #India electricty main voltage +5 from inverter so current can flow
 
         self.AC_power = 0
         self.AC_current = 0
@@ -11,6 +11,10 @@ class inverter_model:
         return self.AC_power
 
     def get_AC_output_voltage(self):
+        return self.AC_voltage
+
+    def set_AC_output_voltage(self, new_voltage):
+        self.AC_voltage = new_voltage
         return self.AC_voltage
 
     def get_AC_output_current(self):

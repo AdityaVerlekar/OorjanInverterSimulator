@@ -11,37 +11,38 @@ from simulator.telemetry import telemetry
 def command_listener(sim, stop_event):
     print("\nInput ready")
     print("Available commands:")
-    print("  fault GRID FAILURE")
-    print("  fault OVER TEMPERATURE")
-    print("  fault UNDER VOLTAGE")
-    print("  fault COMMUNICATION LOSS")
-    print("  condition LOW IRRADIANCE")
-    print("  clear fault")
-    print("  clear condition")
-    print("  stop\n")
+    print("  fault GRID FAILURE / fgf") #Long Term Voltage Collapse which leads to GRID FAILURE
+    print("  fault UNDER VOLTAGE / fuv")
+    print("  condition LOW IRRADIANCE / li")
+    print("  clear fault / cf")
+    print("  clear condition / cc")
+    print("  stop / s\n")
 
     while not stop_event.is_set():
         command = input("").strip().upper()
 
-        if command == "STOP":
+        if command == "STOP" or command == "S":
             stop_event.set()
             print("Stopping simulation...")
 
-        elif command.startswith("FAULT "):
-            fault_name = command.replace("FAULT ", "", 1)
+        elif command in ["FAULT GRID FAILURE", "FAULT UNDER VOLTAGE","FGF", "FUV"]:
+            if(command.startswith("FAULT ")):
+                fault_name = command.replace("FAULT ", "", 1)
+            else:
+                fault_name = "GRID FAILURE" if command[1:]=="GF" else "UNDER VOLTAGE"
+
             result = sim.fault_engine.set_fault(fault_name)
             print(result)
 
-        elif command.startswith("CONDITION "):
-            condition_name = command.replace("CONDITION ", "", 1)
-            result = sim.fault_engine.set_condition(condition_name)
+        elif command in ["CONDITION LOW IRRADIANCE", "LI"]:
+            result = sim.fault_engine.set_condition("LOW IRRADIANCE")
             print(result)
 
-        elif command == "CLEAR FAULT":
+        elif command in ["CLEAR FAULT","CF"]:
             result = sim.fault_engine.clear_fault()
             print(result)
 
-        elif command == "CLEAR CONDITION":
+        elif command in ["CLEAR CONDITION","CC"]:
             result = sim.fault_engine.clear_condition()
             print(result)
 
@@ -80,42 +81,46 @@ def run_simulation():
 
 
 
-    start_hour = 7.5
+    start_hour = 9.5
     end_hour = 19
-    sim_minute_real = 1     # if set to 0.5, 1 minute = 0.5 second
+    sim_minute_real = 0.75     # Indicates how many minutes are processed per second
+                            # if set to 0.5, 0.5 simulated minute = 1 real seconds
+                            # if set to 4, 4 simulated minutes = 1 real seconds. 1 simulated minute = 1/4 seconds
 
-    total_minutes = int((end_hour - start_hour) * 60)
 
-    print("Simulation started.")
+
+    print("Solar Inverter Telemetry Simulator, Irradiance Data Based on Jaisalmer, RJ")
+    print("\nSimulation started.")
     print(f"1 real second = {1/sim_minute_real:.3f} simulated minute(s)")
     print(f"Simulating from {int(start_hour)}:{round(start_hour%1*60):02d} AM to "
-          f"{int(end_hour%12)}:{round(end_hour%1*60):02d} PM\n")
+          f"{int(end_hour%12)}:{round(end_hour%1*60):02d} PM")
 
     listener_thread.start()
+    time.sleep(0.5)
 
     try:
-        for minute in range(total_minutes):
+        i = 0
+        for minute in range(int(start_hour*60), int(end_hour*60)+1,5):
             if stop_event.is_set():
                 break
 
             simulated_hour = start_hour + (minute / 60)
-            simulated_minute = start_hour*60 + minute
 
-            record = sim.collect_data(simulated_hour)
+            record = sim.collect_data(minute)
             records.append(record)
 
-            display_hour = int(simulated_hour)
-            display_minute = int((simulated_hour - display_hour) * 60)
-            if(display_minute%5==0 or record['current_state'].strip()=='STARTING' or minute<6):
-                print(
-                    f"{display_hour:02d}:{display_minute:02d} | "
-                    f"State: {record['current_state']} | "
-                    f"DC: {round(record['dc_power'])} W | "
-                    f"AC: {round(record['ac_power'])} W | "
-                    f"Fault: {record['fault_status']} | "
-                    f"Condition: {record['condition_status']}"
-                )
 
+            print(
+                f"{record['timestamp']} | "
+                f"State: {record['current_state']} | "
+                f"DC: {round(record['dc_power'])} W | "
+                f"AC: {round(record['ac_power'])} W | "
+                f"ACV: {record['ac_voltage']} | "
+                f"Fault: {record['fault_status']} | "
+                f"Condition: {record['condition_status']}"
+            )
+
+            i+=1
             time.sleep(1/sim_minute_real)
 
     except KeyboardInterrupt:
