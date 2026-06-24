@@ -3,4 +3,8 @@ __pycache__/
 *.pyc
 .idea/
 
-data/sample_day_live.csv
+
+data/sample_day.csv
+test.py
+test2.py
+test3.py
