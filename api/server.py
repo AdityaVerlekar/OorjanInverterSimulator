@@ -1,38 +1,39 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List
+from fastapi import FastAPI, HTTPException #http exception is for error response
+from pydantic import BaseModel #validates json input
+from typing import List #helps create a list of type: Object
 
 from simulator.telemetry import telemetry
 
 
-app = FastAPI(title="Inverter Telemetry Simulator API")
+app = FastAPI(title="Inverter Telemetry Simulator API") #create the "app" that the Uvicorn server will run
 
 
-class FaultInput(BaseModel):
+class FaultCondInput(BaseModel): #structure of fault input
     type: str
     start_time: str
     end_time: str
 
 
-class SimulationRequest(BaseModel):
+class SimulationRequest(BaseModel): #simulate request format
     start_time: str = "05:00"
     end_time: str = "20:00"
     step_minutes: int = 5
-    faults: List[FaultInput] = []
+    faults: List[FaultCondInput] = [] #you can insert multiple faults
+    conditions: List[FaultCondInput] = []
 
 
 def time_to_minutes(time_string):
     try:
         hour, minute = time_string.split(":")
-        return int(hour) * 60 + int(minute)
+        return int(hour)*60 + int(minute)
     except:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid time format: {time_string}. Use HH:MM format."
+            detail=f"Invalid time- {time_string}"
         )
 
 
-def convert_fault_name(api_fault_name):
+def convert_fault_name(api_fault_name): #converts the nospace fault names used in APInames into the names used in my function
     fault_map = {
         "grid-failure": "GRID FAILURE",
         "under-voltage": "UNDER VOLTAGE",
@@ -47,8 +48,22 @@ def convert_fault_name(api_fault_name):
 
     return fault_map[api_fault_name]
 
+def convert_condition_name(api_condition_name):
+    condition_map= {
+        "low-irradiance": "LOW IRRADIANCE",
+        "no-condition": "NO CONDITION",
+    }
 
-def get_active_fault(current_minute, faults):
+    if api_condition_name not in condition_map:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid condition type: {api_condition_name}"
+        )
+
+    return condition_map[api_condition_name]
+
+
+def get_active_fault(current_minute, faults): #implements fault at the minute if scheduled
     for fault in faults:
         fault_start = time_to_minutes(fault.start_time)
         fault_end = time_to_minutes(fault.end_time)
@@ -58,16 +73,26 @@ def get_active_fault(current_minute, faults):
 
     return "NO FAULT"
 
+def get_active_condition(current_minute, conditions): #implements fault at the minute if scheduled
+    for condition in conditions:
+        cond_start = time_to_minutes(condition.start_time)
+        cond_end = time_to_minutes(condition.end_time)
 
-@app.get("/")
+        if cond_start <= current_minute <= cond_end:
+            return convert_condition_name(condition.type)
+
+    return "NO CONDITION"
+
+
+@app.get("/") #when someone sends "GET /" request , root is run
 def root():
     return {
         "message": "Inverter Telemetry Simulator API is running"
     }
 
 
-@app.post("/simulate")
-def simulate(request: SimulationRequest):
+@app.post("/simulate")  #when someone sends POST /SIMULATE
+def simulate(request: SimulationRequest): #request should follow format of SimulationRequest
     sim = telemetry()
     records = []
 
@@ -79,6 +104,11 @@ def simulate(request: SimulationRequest):
             status_code=400,
             detail="end_time must be after start_time"
         )
+    elif start_minute <0 or end_minute>24*60:
+        raise HTTPException(
+            status_code=400,
+            detail="time outside 0-24 hour range"
+        )
 
     if request.step_minutes <= 0:
         raise HTTPException(
@@ -88,11 +118,17 @@ def simulate(request: SimulationRequest):
 
     for minute in range(start_minute, end_minute + 1, request.step_minutes):
         active_fault = get_active_fault(minute, request.faults)
+        active_condition = get_active_condition(minute, request.conditions)
 
         if active_fault == "NO FAULT":
             sim.fault_engine.clear_fault()
         else:
             sim.fault_engine.set_fault(active_fault)
+
+        if(active_condition == "NO CONDITION"):
+            sim.fault_engine.clear_condition()
+        else:
+            sim.fault_engine.set_condition(active_condition)
 
         record = sim.collect_data(minute)
         records.append(record)
