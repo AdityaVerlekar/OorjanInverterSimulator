@@ -36,8 +36,7 @@ class solar_model:
             16 * 60: round(560 * (1 + (random() * 2 - 1) * (randomness_factor / 100))),
             17 * 60: round(350 * (1 + (random() * 2 - 1) * (randomness_factor / 100))),
             18 * 60: round(138 * (1 + (random() * 2 - 1) * (randomness_factor / 100))),
-            19 * 60: 0,
-            18*60: 0 #FIXME
+            19 * 60: 0
         }
 
         self.time = 0
@@ -52,7 +51,7 @@ class solar_model:
         #
 
     def set_panel_irradiance(self, time):
-        if(time<6*60 or time>19*60):
+        if(time<5*60 or time>19*60):
             self.DC_power = 0
             return 0
 

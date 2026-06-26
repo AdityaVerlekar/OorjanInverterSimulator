@@ -17,11 +17,11 @@ class state_machine:
         if(panel_power < self.start_threshold ):
             self.current_state = self.OFF
 
-        elif(self.current_state == self.OFF and fault_status=="NO FAULT"):
+        elif(self.current_state == self.OFF and fault_status!="GRID FAILURE"):
             self.current_state = self.STARTING
 
 
-        elif((self.current_state == self.STARTING and fault_status== "NO FAULT") or self.current_state == self.RUNNING):
+        elif((self.current_state == self.STARTING and fault_status!= "GRID FAILURE") or self.current_state == self.RUNNING):
             self.current_state = self.RUNNING
 
         return self.current_state
