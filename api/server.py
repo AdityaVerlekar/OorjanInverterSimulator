@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException #http exception is for error response
 from pydantic import BaseModel #validates json input
 from typing import List #helps create a list of type: Object
-import time
 import threading
 
 from simulator.telemetry import telemetry
@@ -15,11 +14,12 @@ simulation_state = {
     "records" : [],
     "start_time": None,
     "end_time": None,
-    "step_mins": None,
+    "step_minutes": None,
     "current_minute": None,
     "message": "Progressive simulation NOT running"
 }
 simulation_lock = threading.Lock()
+simulation_stop_event = threading.Event()
 
 
 class FaultCondInput(BaseModel): #structure of fault input
@@ -161,7 +161,7 @@ def get_active_fault(current_minute, faults): #implements fault at the minute if
         fault_start = time_to_minutes(fault.start_time)
         fault_end = time_to_minutes(fault.end_time)
 
-        if fault_start <= current_minute <= fault_end:
+        if fault_start <= current_minute < fault_end:
             active_faults.append( convert_fault_name(fault.type))
     if("GRID FAILURE" in active_faults):
         return "GRID FAILURE"
@@ -201,45 +201,53 @@ def fault_condition_list(request):
 
 
 def run_progressive_simulation(request):
-    sim = telemetry()
+    try:
+        sim = telemetry()
 
-    start_minute = time_to_minutes(request.start_time)
-    end_minute = time_to_minutes(request.end_time)
+        start_minute = time_to_minutes(request.start_time)
+        end_minute = time_to_minutes(request.end_time)
 
-    all_faults, all_conditions = fault_condition_list(request)
+        all_faults, all_conditions = fault_condition_list(request)
 
-    records = []
+        records = []
 
-    for minute in range(start_minute, end_minute + 1, request.step_minutes):
-        active_fault = get_active_fault(minute, all_faults)
-        active_condition = get_active_condition(minute, all_conditions)
+        for minute in range(start_minute, end_minute + 1, request.step_minutes):
+            if simulation_stop_event.is_set():
+                break
+            active_fault = get_active_fault(minute, all_faults)
+            active_condition = get_active_condition(minute, all_conditions)
 
-        sim.fault_engine.clear_fault()
+            sim.fault_engine.clear_fault()
 
-        if active_fault != "NO FAULT":
-            sim.fault_engine.set_fault(active_fault)
+            if active_fault != "NO FAULT":
+                sim.fault_engine.set_fault(active_fault)
 
-        if active_condition == "NO CONDITION":
-            sim.fault_engine.clear_condition()
-        else:
-            sim.fault_engine.set_condition(active_condition)
+            if active_condition == "NO CONDITION":
+                sim.fault_engine.clear_condition()
+            else:
+                sim.fault_engine.set_condition(active_condition)
 
-        record = sim.collect_data(minute)
-        records.append(record)
+            record = sim.collect_data(minute)
+            records.append(record)
 
+            with simulation_lock:
+                simulation_state["current_record"] = record
+                simulation_state["records"] = records
+                simulation_state["current_minute"] = minute
+                simulation_state["message"] = "Progressive simulation running"
+
+            # Real-time delay
+            # This means one simulation step happens every 1 real second.
+            if simulation_stop_event.wait(1):
+                break
+    finally:
         with simulation_lock:
-            simulation_state["current_record"] = record
-            simulation_state["records"] = records
-            simulation_state["current_minute"] = minute
-            simulation_state["message"] = "Progressive simulation running"
+            simulation_state["is_running"] = False
 
-        # Real-time delay
-        # This means one simulation step happens every 1 real second.
-        time.sleep(1)
-
-    with simulation_lock:
-        simulation_state["is_running"] = False
-        simulation_state["message"] = "Progressive simulation finished"
+            if simulation_stop_event.is_set():
+                simulation_state["message"] = "Progressive simulation stopped"
+            else:
+                simulation_state["message"] = "Progressive simulation finished"
 
 
 def get_check_valid_time(request):
@@ -317,6 +325,7 @@ def simulate_day_instantly(request: SimulationRequest): #request should follow f
 def simulate_day_progressively(request: SimulationRequest):  # request should follow format of SimulationRequest
 
     start_minute, end_minute = get_check_valid_time(request)
+    fault_condition_list(request)
 
     with simulation_lock:
         if simulation_state["is_running"]:
@@ -324,6 +333,8 @@ def simulate_day_progressively(request: SimulationRequest):  # request should fo
                 status_code=409,
                 detail="A progressive simulation is already running"
             )
+
+        simulation_stop_event.clear()
 
         simulation_state["is_running"] = True
         simulation_state["current_record"] = None
@@ -371,5 +382,22 @@ def get_progressive_records():
             "records": simulation_state["records"]
         }
 
+@app.post("/stop")
+def stop_progression():
+    with simulation_lock:
+        if not simulation_state["is_running"]:
+            return {
+                "message": "No progressive simulation is currently running",
+                "is_running": False
+            }
 
-#speed: float = 1 #this is only used in progressive simulation, does not affect anything in instant simulation
+        simulation_stop_event.set()
+        simulation_state["message"] = "Stop requested"
+
+        return {
+            "message": "Progressive simulation stop requested",
+            "is_running": simulation_state["is_running"],
+            "current_minute": simulation_state["current_minute"],
+            "current_record": simulation_state["current_record"]
+        }
+
