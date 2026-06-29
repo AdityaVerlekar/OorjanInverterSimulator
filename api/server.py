@@ -1,11 +1,25 @@
 from fastapi import FastAPI, HTTPException #http exception is for error response
 from pydantic import BaseModel #validates json input
 from typing import List #helps create a list of type: Object
+import time
+import threading
 
 from simulator.telemetry import telemetry
 
 
 app = FastAPI(title="Inverter Telemetry Simulator API") #create the "app" that the Uvicorn server will run
+
+simulation_state = {
+    "is_running" : False,
+    "current_record" : None,
+    "records" : [],
+    "start_time": None,
+    "end_time": None,
+    "step_mins": None,
+    "current_minute": None,
+    "message": "Progressive simulation NOT running"
+}
+simulation_lock = threading.Lock()
 
 
 class FaultCondInput(BaseModel): #structure of fault input
@@ -69,16 +83,18 @@ def convert_condition_name(api_condition_name):
 
     return condition_map[api_condition_name]
 
-#fgf - runs throughout - 0000-2359
-#fgf st0500 - starts at 0500, continues to end of sim
-#fgf et1400 - begins at simulation start, ends at 1400
-#fgf st0500 et1400 - begins at 0500, ends at 1400
+
 
 def raise_invalid_command():
     raise HTTPException(
         status_code=400,
         detail=f"Invalid command"
     )
+
+#fgf - runs throughout - 0000-2359
+#fgf st0500 - starts at 0500, continues to end of sim
+#fgf et1400 - begins at simulation start, ends at 1400
+#fgf st0500 et1400 - begins at 0500, ends at 1400
 
 def parse_command(command):
     command = command.split()
@@ -139,7 +155,6 @@ def parse_command(command):
 
 
 
-
 def get_active_fault(current_minute, faults): #implements fault at the minute if scheduled
     active_faults = []
     for fault in faults:
@@ -165,21 +180,69 @@ def get_active_condition(current_minute, conditions): #implements fault at the m
 
     return "NO CONDITION"
 
+def fault_condition_list(request):
+    all_faults = list(request.faults)
+    all_conditions = list(request.conditions)
 
-@app.get("/") #when someone sends "GET /" request , root is run
-def root():
-    return {
-        "message": "Inverter Telemetry Simulator API is running"
-    }
+    for command in request.commands:
+        parse = parse_command(command)
+        new_input = FaultCondInput(
+            type=parse["type"],
+            start_time=parse["start_time"],
+            end_time=parse["end_time"]
+        )
+        if (parse["category"] == "fault"):
+            all_faults.append(new_input)
+        elif (parse["category"] == "condition"):
+            all_conditions.append(new_input)
+
+    return all_faults, all_conditions
 
 
-@app.post("/simulate")  #when someone sends POST /SIMULATE
-def simulate(request: SimulationRequest): #request should follow format of SimulationRequest
+
+def run_progressive_simulation(request):
     sim = telemetry()
+
+    start_minute = time_to_minutes(request.start_time)
+    end_minute = time_to_minutes(request.end_time)
+
+    all_faults, all_conditions = fault_condition_list(request)
+
     records = []
 
+    for minute in range(start_minute, end_minute + 1, request.step_minutes):
+        active_fault = get_active_fault(minute, all_faults)
+        active_condition = get_active_condition(minute, all_conditions)
+
+        sim.fault_engine.clear_fault()
+
+        if active_fault != "NO FAULT":
+            sim.fault_engine.set_fault(active_fault)
+
+        if active_condition == "NO CONDITION":
+            sim.fault_engine.clear_condition()
+        else:
+            sim.fault_engine.set_condition(active_condition)
+
+        record = sim.collect_data(minute)
+        records.append(record)
+
+        with simulation_lock:
+            simulation_state["current_record"] = record
+            simulation_state["records"] = records
+            simulation_state["current_minute"] = minute
+            simulation_state["message"] = "Progressive simulation running"
+
+        # Real-time delay
+        # This means one simulation step happens every 1 real second.
+        time.sleep(1)
+
+    with simulation_lock:
+        simulation_state["is_running"] = False
+        simulation_state["message"] = "Progressive simulation finished"
 
 
+def get_check_valid_time(request):
     start_minute = time_to_minutes(request.start_time)
     end_minute = time_to_minutes(request.end_time)
 
@@ -188,7 +251,7 @@ def simulate(request: SimulationRequest): #request should follow format of Simul
             status_code=400,
             detail="end_time must be after start_time"
         )
-    elif start_minute <0 or end_minute>24*60:
+    elif start_minute < 0 or end_minute > 24 * 60:
         raise HTTPException(
             status_code=400,
             detail="time outside 0-24 hour range"
@@ -200,21 +263,27 @@ def simulate(request: SimulationRequest): #request should follow format of Simul
             detail="step_minutes must be greater than 0"
         )
 
+    return start_minute, end_minute
 
-    all_faults = list(request.faults)
-    all_conditions = list(request.conditions)
 
-    for command in request.commands:
-        parse = parse_command(command)
-        new_input = FaultCondInput(
-            type= parse["type"],
-            start_time= parse["start_time"],
-            end_time= parse["end_time"]
-        )
-        if(parse["category"]=="fault"):
-            all_faults.append(new_input)
-        elif(parse["category"]=="condition"):
-            all_conditions.append(new_input)
+
+@app.get("/") #when someone sends "GET /" request , root is run
+def root():
+    return {
+        "message": "Inverter Telemetry Simulator API is running"
+    }
+
+
+
+@app.post("/simulate_day_instantly")  #when someone sends POST /SIMULATE
+def simulate_day_instantly(request: SimulationRequest): #request should follow format of SimulationRequest
+    sim = telemetry()
+    records = []
+
+
+
+    start_minute, end_minute = get_check_valid_time(request)
+    all_faults, all_conditions = fault_condition_list(request)
 
 
     for minute in range(start_minute, end_minute + 1, request.step_minutes):
@@ -242,3 +311,65 @@ def simulate(request: SimulationRequest): #request should follow format of Simul
         "record_count": len(records),
         "records": records
     }
+
+
+@app.post("/simulate_day_progressively")  # when someone sends POST /sim...
+def simulate_day_progressively(request: SimulationRequest):  # request should follow format of SimulationRequest
+
+    start_minute, end_minute = get_check_valid_time(request)
+
+    with simulation_lock:
+        if simulation_state["is_running"]:
+            raise HTTPException(
+                status_code=409,
+                detail="A progressive simulation is already running"
+            )
+
+        simulation_state["is_running"] = True
+        simulation_state["current_record"] = None
+        simulation_state["records"] = []
+        simulation_state["start_time"] = request.start_time
+        simulation_state["end_time"] = request.end_time
+        simulation_state["step_minutes"] = request.step_minutes
+        simulation_state["current_minute"] = None
+        simulation_state["message"] = "Progressive simulation starting"
+
+    thread = threading.Thread(
+        target=run_progressive_simulation,
+        args=(request,),
+        daemon=True
+    )
+
+    thread.start()
+
+    return {
+        "message": "Progressive simulation started",
+        "start_time": request.start_time,
+        "end_time": request.end_time,
+        "step_minutes": request.step_minutes
+    }
+
+@app.get("/live_data")
+def get_live_telemetry():
+    with simulation_lock:
+        return {
+            "is_running": simulation_state["is_running"],
+            "message": simulation_state["message"],
+            "start_time": simulation_state["start_time"],
+            "end_time": simulation_state["end_time"],
+            "step_minutes": simulation_state["step_minutes"],
+            "current_minute": simulation_state["current_minute"],
+            "current_record": simulation_state["current_record"]
+        }
+
+@app.get("/all_records_so_far")
+def get_progressive_records():
+    with simulation_lock:
+        return {
+            "is_running": simulation_state["is_running"],
+            "record_count": len(simulation_state["records"]),
+            "records": simulation_state["records"]
+        }
+
+
+#speed: float = 1 #this is only used in progressive simulation, does not affect anything in instant simulation
