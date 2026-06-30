@@ -1,3 +1,5 @@
+#Inverter Telemetry Simulator
+
 from fastapi import FastAPI, HTTPException #http exception is for error response
 from pydantic import BaseModel #validates json input
 from typing import List #helps create a list of type: Object
@@ -5,9 +7,13 @@ import threading
 
 from simulator.telemetry import telemetry
 
+#run server in terminal: uvicorn api.server:app --reload
+#browser: http://127.0.0.1:8000/docs
+#terminal: Ctrl+C to stop running
 
 app = FastAPI(title="Inverter Telemetry Simulator API") #create the "app" that the Uvicorn server will run
 
+#dictionary with current state data of live simulation
 simulation_state = {
     "is_running" : False,
     "current_record" : None,
@@ -28,7 +34,7 @@ class FaultCondInput(BaseModel): #structure of fault input
     end_time: str
 
 
-class SimulationRequest(BaseModel): #simulate request format
+class SimulationRequest(BaseModel): #simulate request format, ie these are the inputs into the API from the user
     start_time: str = "05:00"
     end_time: str = "20:00"
     step_minutes: int = 5
@@ -69,7 +75,7 @@ def convert_fault_name(api_fault_name): #converts the nospace fault names used i
 
     return fault_map[api_fault_name]
 
-def convert_condition_name(api_condition_name):
+def convert_condition_name(api_condition_name): #same as convert_fault_name but for conditions
     condition_map= {
         "low-irradiance": "LOW IRRADIANCE",
         "no-condition": "NO CONDITION",
@@ -97,8 +103,8 @@ def raise_invalid_command():
 #fgf st0500 et1400 - begins at 0500, ends at 1400
 
 def parse_command(command):
-    command = command.split()
-    command = [item.lower() for item in command]
+    command = command.split() #each word is turned into an element
+    command = [item.lower() for item in command] #each word is lowercased
 
     if(len(command)>3 or len(command)<1):
         raise_invalid_command()
@@ -180,7 +186,7 @@ def get_active_condition(current_minute, conditions): #implements fault at the m
 
     return "NO CONDITION"
 
-def fault_condition_list(request):
+def fault_condition_list(request): #creating a list of faults (and conditions) so the sim can switch between fault states seamlessly
     all_faults = list(request.faults)
     all_conditions = list(request.conditions)
 
@@ -200,7 +206,7 @@ def fault_condition_list(request):
 
 
 
-def run_progressive_simulation(request):
+def run_progressive_simulation(request): #running the live simulation
     try:
         sim = telemetry()
 
