@@ -4,7 +4,7 @@ __pycache__/
 .idea/
 
 
-data/sample_day.csv
+
 test.py
 test2.py
 test3.py
