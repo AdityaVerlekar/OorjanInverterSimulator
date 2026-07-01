@@ -1,4 +1,4 @@
-"# OorjanInverterSimulator" 
+# Oorjan Inverter Simulator 
 
 The Inverter Telemetry Simulator is created to help software developers to obtain, process and interact with the data from a simulated inverter rather than using actual data. 
 The simulator, written in Python, uses FastAPI to mimic the real-world inverter API.
@@ -15,6 +15,8 @@ The faults that can be injected include grid failure and low voltage. In grid fa
 The faults can be inserted at any time in the progressive/live simulation as well as the instant day simulation. Grid failure takes precedence over low voltage in case of overlapping fault periods. 
 
 The only condition present in the simulator, low irradiance, mimics a cloud or rainy day, reducing panel DC power output by 80%. Similar to the faults, it can be inserted at any time in both running modes.
+
+##Installation
 
 Install dependencies using `pip install fastapi uvicorn pydantic`
 
@@ -122,10 +124,6 @@ Fault/condition scenario:
 }
 ```
 ---
-
-
-
-
 Note: This simulator is designed for software testing and development. It is not intended to be an electrically accurate inverter simulation.
 
 
