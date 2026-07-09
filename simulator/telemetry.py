@@ -12,7 +12,7 @@ class telemetry:
         self.state_machine = state_machine()
         self.fault_engine = fault_engine()
 
-        self.timestamp =0 #fixed: timestamp is in minutes
+        self.timestamp =0 #timestamp is in minutes
 
         self.irradiance = 0
 

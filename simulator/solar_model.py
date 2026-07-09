@@ -44,10 +44,15 @@ class solar_model:
         self.DC_power = 0
         self.DC_current = 0
         self.irradiance = 0
-        self.peak_power = 525
+        self.peak_power = 1000
+        self.temp_loss = 1- ((70 - 25) * 0.35 /100)  # 15.75%
+        self.tilt_loss = 0.94 # 6%
+
+        self.area = 2.385
+        #self.area = solar cell area = 2.385 m^2
 
         # https://rooftopsolarindia.com/datasheet/waaree-energies/datasheet-waaree-solar-mono-perc-m10-515W-520W-525W-530W-535W-540W-545W.pdf
-        # solar cell area = 2.385 m^2
+
         #
 
     def set_panel_irradiance(self, time):
@@ -67,11 +72,12 @@ class solar_model:
 
 
         irr = round((i1 + (time - t1) / (t2 - t1) * (i2 - i1))*(1 + (random() * 2 - 1) * (0.01)))
+
         self.irradiance = irr
         return self.irradiance
 
     def get_panel_power(self):
-        self.DC_power = round(self.irradiance*self.peak_power/1000)
+        self.DC_power = round(self.irradiance*self.peak_power/1000 * self.temp_loss *self.tilt_loss)
         return self.DC_power
 
     def get_panel_voltage(self):

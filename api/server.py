@@ -176,7 +176,7 @@ def get_active_fault(current_minute, faults): #implements fault at the minute if
 
     return "NO FAULT"
 
-def get_active_condition(current_minute, conditions): #implements fault at the minute if scheduled
+def get_active_condition(current_minute, conditions): #implements condition at the minute if scheduled
     for condition in conditions:
         cond_start = time_to_minutes(condition.start_time)
         cond_end = time_to_minutes(condition.end_time)
